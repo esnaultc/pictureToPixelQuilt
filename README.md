@@ -32,5 +32,5 @@ following parameters are currently included:
 
 Run the Rmarkdown script with:
 
-``Rscript -e "rmarkdown::render('pictureToPixelQuilt.Rmd')"
+``Rscript -e "rmarkdown::render('pictureToPixelQuilt.Rmd')"``
 
