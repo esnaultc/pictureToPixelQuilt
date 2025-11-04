@@ -1,0 +1,11 @@
+# picture file to process (JPG)
+input_fn: fall_landscape.jpg
+
+# number of tiles across the width
+tile_number_width: 40
+
+# number of different fabrics
+color_number: 16
+
+# size in inch of each tile
+tile_size: 2

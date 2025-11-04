@@ -1,0 +1,152 @@
+---
+output:
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_float: true
+output_file: 'index.html'
+---
+
+```{r global_options, include = FALSE}
+knitr::opts_chunk$set(
+	echo=FALSE,
+	warning=FALSE,
+	message=FALSE)
+```
+
+```{r libraries}
+library(magick)
+library(ggplot2)
+library(tidyr)
+library(yaml)
+library(dplyr)
+library(scales)
+```
+
+
+```{r functions}
+# deduct the rest of parameters from config and image file
+add_params <- function(cfg_i, img_i) {
+	# cfg_i: config loaded from yaml file
+	# img_i: magick image object
+
+	# image size
+	cfg_i[['img_width']] <- image_info(img_i)[['width']]
+	cfg_i[['img_height']] <- image_info(img_i)[['height']]
+	# tile width is the image width divided by requested number of tiles along x-axis
+	cfg_i[['tile_width']] <- ceiling(cfg_i[['img_width']] / cfg_i[['tile_number_width']])
+	# now can deduct the number of tiles along y-axis
+	cfg_i[['tile_number_height']] <- ceiling(cfg_i[['img_height']] / cfg_i[['tile_width']])
+	return(cfg_i)
+}
+
+# crop the image to a tile, given specific position
+crop_to_tile <- function(img_i, tile_width, tile_col, tile_row) {
+	# img_i: magick image object
+	# tile_width: width of the tile, in pixel
+	# tile_col: column number of the current tile (along x-axis)
+	# tile_row: row number of the current tile (along y-axis)
+
+	# this function uses image_crop() which requires a geometry string
+	# of the format: window_width x window_height + x-axis offset + y-axis offset, i.e. 400x400+200+200
+	geom_string <- paste0(
+		tile_width, "x", 
+		tile_width, '+', 
+		(tile_col - 1) * tile_width + 1 , '+', 
+		(tile_row - 1) * tile_width + 1 )
+	return(image_crop(img_i, geometry = geom_string))
+}
+
+
+# given df of coordinates and hex values,
+# count the frequency of each color.
+# return the dominant color = the one with the highest count
+dominant_color <- function(df) {
+	df %>%
+		group_by(col) %>%
+		summarize(total = n()) %>%
+  		arrange(desc(total)) %>%
+		slice(1) %>%
+		.[['col']]
+}
+
+```
+
+
+```{r read_input}
+# config,yaml file contains the file to convert and params
+cfg <- read_yaml("config.yaml")
+
+# load the image file with magick
+img <- image_read(cfg[['input_fn']])
+
+# add other params that are file-specific and deducted from the file info
+cfg <- add_params(cfg, img)
+```
+
+```{r decrease_colors}
+# the goal of this intermediate step is to decrease the number of colors to a more
+# manageable number. 
+reduced_img <- image_quantize(img, max = 256, colorspace = "YUV", dither = TRUE, treedepth=8)
+```
+
+
+
+```{r split_img}
+# Split the image into a raster grid, loop through rows and columns
+tiled_imgs <- list()
+
+for (tile_row in 1:cfg[['tile_number_height']]) {
+	for (tile_col in 1:cfg[['tile_number_width']]) {
+		tile_i <- paste0(tile_col, 'x', tile_row)
+		tiled_imgs[[tile_i]] <- crop_to_tile(reduced_img,cfg[['tile_width']], tile_col, tile_row)
+	}
+}
+```
+
+```{r get_main_color}
+# get the pixel data into a df
+pixels <- lapply(tiled_imgs, image_raster)
+
+# get the dominant color per tile, this is the one with the highest count
+dominant_color_df <- lapply(pixels, dominant_color) %>%
+	as.data.frame(check.names=FALSE) %>%
+	t() %>%
+	as.data.frame() %>%
+	mutate('tile' = rownames(.))
+
+colnames(dominant_color_df) <- c('hex', 'tile')
+```
+
+```{r cluster_colors}
+# convert to RGB to perform kmeans clustering
+dominant_color_df[c('red', 'green', 'blue')] <- lapply(dominant_color_df[['hex']], col2rgb) %>%
+	as.data.frame() %>%
+	t() %>%
+	as.data.frame()
+
+clusters <-  kmeans(dominant_color_df[c('red', 'green', 'blue')], centers=cfg[['color_number']])
+# cluster assignments: clusters$cluster
+# cluster color values: cluster$centers
+
+# convert the new clustered colors to hex, and add them to the df
+cluster_keys <- rgb(
+	clusters$centers[,'red'],
+ 	clusters$centers[,'green'],
+	clusters$centers[,'blue'],
+	maxColorValue=255)
+
+dominant_color_df[['new_hex']] <- cluster_keys[ clusters$cluster]
+
+# display the result
+# all colors
+show_col(dominant_color_df[['hex']], ncol=cfg[['tile_number_width']], labels=FALSE)
+# after clustering
+jpeg("clustered.jpg")
+show_col(dominant_color_df[['new_hex']], ncol=cfg[['tile_number_width']], labels=FALSE)
+dev.off()
+# unique clustered colors
+jpeg('color_scale.jpg')
+show_col(unique(dominant_color_df[['new_hex']]), ncol=1, labels=FALSE)
+dev.off()
+```
