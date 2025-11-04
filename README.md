@@ -14,7 +14,7 @@ then the environment can be activated with:
 Parameters are specified in the ``config.yaml`` file. Edit as necessary. The
 following parameters are currently included:
 
-..code-block:: bash
+```bash
 
   # picture file to process (JPG)
   input_fn: fall_landscape.jpg
@@ -28,6 +28,7 @@ following parameters are currently included:
   # size in inch of each tile (not implemented yet, this will be used to determine the
   # fabric requirements
   tile_size: 2
+```
 
 Run the Rmarkdown script with:
 
