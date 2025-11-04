@@ -1,6 +1,6 @@
 # pictureToPixelQuilt
 
-Trying to merge two of my favorite hobies, this project is intended to convert a picture file (.jpg)
+Trying to merge two of my favorite hobbies, this project is intended to convert a picture file (.jpg)
 to a grid of square tiles of a finite number of colors that can be used as a quilt pattern.
 
 ## Prerequisites
