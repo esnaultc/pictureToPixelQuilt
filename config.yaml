@@ -1,11 +1,19 @@
-# picture file to process (JPG)
-input_fn: fall_landscape.jpg
+img_filename: 
+  value: fall_landscape.jpg
+  description: picture file to process (.jpg)
 
-# number of tiles across the width
-tile_number_width: 40
+tile_number_width:
+  value: 40
+  description: number of tiles to have across the width of the picture
 
-# number of different fabrics
-color_number: 16
+color_number:
+  value: 16
+  description: number of different colors or fabrics
 
-# size in inch of each tile
-tile_size: 2
+tile_size:
+  value: 2
+  description: size in inch of each square tile (i.e. 2 for 2x2" tiles in finished quilt)
+
+colorspace:
+  value: YUV
+  description: '[advanced] colorspace to use in reducing the number of colors in the original picture (some examples are YUV, RGB, HSV)'
