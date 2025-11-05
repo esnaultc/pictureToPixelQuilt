@@ -1,5 +1,7 @@
 # pictureToPixelQuilt
 
+See the rendered html at [https://esnaultc.github.io/pictureToPixelQuilt/](https://esnaultc.github.io/pictureToPixelQuilt/)
+
 Trying to merge two of my favorite hobbies, this project is intended to convert a picture file (.jpg)
 to a grid of square tiles of a finite number of colors that can be used as a quilt pattern.
 
@@ -49,10 +51,7 @@ a jpeg of the color swatch.
 This repo is still under development. The goal is to generate a full quilt pattern
 with fabric requirements, pattern grid and instructions.
 
-- return the number of tiles of each color
 - generate a tile grid split into smaller blocks (8x8 tiles?) that can be assembled and
   sewn together later
-- calculate the fabric requirements, taking into account a 1/4" seam allowance on the tiles,
-  translate into fat quarters, or other fabric yardage
 - print out the full instructions with grids pictures in the html report
 
