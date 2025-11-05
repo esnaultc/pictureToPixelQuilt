@@ -1,0 +1,294 @@
+---
+output:
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_float: true
+---
+
+```{r global_options, include = FALSE}
+knitr::opts_chunk$set(
+	echo=FALSE,
+	warning=FALSE,
+	message=FALSE)
+```
+
+```{r libraries}
+library(magick)
+library(ggplot2)
+library(tidyr)
+library(yaml)
+library(dplyr)
+library(scales)
+```
+
+
+```{r functions}
+# deduct the rest of parameters from config and image file
+add_params <- function(cfg_i, img_i) {
+	# cfg_i: config loaded from yaml file
+	# img_i: magick image object
+
+	# image size
+	cfg_i[['img_width']] <- list(
+		'value' = image_info(img_i)[['width']],
+		'description' = 'width in pixel of the image')
+	cfg_i[['img_height']] <- list(
+		'value' = image_info(img_i)[['height']],
+		'description' = 'height in pixel of the image')
+
+	# tile width is the image width divided by requested number of tiles along x-axis
+	cfg_i[['tile_width']] <- list(
+		'value' = ceiling(cfg_i[['img_width']][['value']] /
+			 cfg_i[['tile_number_width']][['value']]),
+		'description' = 'tile width in pixel')
+
+	# now can deduct the number of tiles along y-axis
+	cfg_i[['tile_number_height']] <- list(
+		'value' = ceiling(cfg_i[['img_height']][['value']] / cfg_i[['tile_width']][['value']]),
+		'description' = 'number of tiles across the height of the picture')
+	return(cfg_i)
+}
+
+# crop the image to a tile, given specific position
+crop_to_tile <- function(img_i, tile_width, tile_col, tile_row) {
+	# img_i: magick image object
+	# tile_width: width of the tile, in pixel
+	# tile_col: column number of the current tile (along x-axis)
+	# tile_row: row number of the current tile (along y-axis)
+
+	# this function uses image_crop() which requires a geometry string
+	# of the format: window_width x window_height + x-axis offset + y-axis offset,
+	# i.e. 400x400+200+200
+	geom_string <- paste0(
+		tile_width, "x", 
+		tile_width, '+', 
+		(tile_col - 1) * tile_width + 1 , '+', 
+		(tile_row - 1) * tile_width + 1 )
+	return(image_crop(img_i, geometry = geom_string))
+}
+
+# given df of coordinates and hex values,
+# count the frequency of each color.
+# return the dominant color = the one with the highest count
+dominant_color <- function(df) {
+	df %>%
+		group_by(col) %>%
+		summarize(total = n()) %>%
+  		arrange(desc(total)) %>%
+		slice(1) %>%
+		.[['col']]
+}
+
+print_tiles <- function(df, label=FALSE) {
+	# custom colors need a named list
+	hex_cols <- unique(df$new_hex)
+	names(hex_cols) <- hex_cols
+	# make a ggplot geom_tile of x by y, with fill = hex
+	p <- ggplot(df, aes(x=x, y=rev(y), label=color_name, fill=new_hex)) +
+		geom_tile(color = "black", linewidth = 0.2) +
+		scale_fill_manual(values=hex_cols) +
+		coord_equal() +
+		theme_classic() +
+		theme(legend.position="none")
+	if (label == TRUE) {
+		p <- p + 
+			geom_text(aes(label=color_name))
+	}
+ 	print(p)
+}
+```
+
+
+```{r read_input}
+# config,yaml file contains the file to convert and params
+cfg <- read_yaml("config.yaml")
+
+# load the image file with magick
+img <- image_read(cfg[['img_filename']][['value']])
+
+# add other params that are file-specific and deducted from the file info
+cfg <- add_params(cfg, img)
+```
+
+## Current parameters
+
+The table below describes the parameters used for generating the pattern.
+
+```{r print_params}
+# convert the config to df to print in a table
+do.call(rbind, cfg) %>%
+	as.data.frame() %>%
+	mutate(parameter = rownames(.)) %>%
+	arrange(parameter) %>%
+	select(parameter, value, description) %>%
+	knitr::kable(row.names=FALSE)
+```
+
+## Color reduction
+
+Pictures contain often hundreds of colors, many very close in shades. It is necessary to simplify
+the color universe of the original picture before calculating the number of occurance of each color.
+Without that simplification, the dominant color shades might overwhelm the other colors and bias
+the final colorscheme.
+
+Different pictures might behave differently with different colorspace reduction, try another
+colospace in the ``config.yaml`` file if the colors are off after reduction. 
+
+```{r decrease_colors, results='asis', fig.width=3}
+# the goal of this intermediate step is to decrease the number of colors to a more
+# manageable number. 
+reduced_img <- image_quantize(
+	img,
+	max = 256,
+	colorspace = cfg[['colorspace']][['value']],
+	dither = TRUE,
+	treedepth=8)
+
+cat('\n\n### Original picture\n\n')
+img %>% image_resize('300')
+cat('\n\n### After color reduction\n\n')
+reduced_img %>% image_resize('300')
+```
+
+
+
+```{r split_img}
+# Split the image into a raster grid, loop through rows and columns
+tiled_imgs <- list()
+
+for (tile_row in 1:cfg[['tile_number_height']][['value']]) {
+	for (tile_col in 1:cfg[['tile_number_width']][['value']]) {
+		tile_i <- paste0(tile_col, 'x', tile_row)
+		tiled_imgs[[tile_i]] <- crop_to_tile(
+			reduced_img, cfg[['tile_width']][['value']], tile_col, tile_row)
+	}
+}
+```
+
+```{r get_main_color}
+# get the pixel data into a df
+pixels <- lapply(tiled_imgs, image_raster)
+
+# get the dominant color per tile, this is the one with the highest count
+dominant_color_df <- lapply(pixels, dominant_color) %>%
+	as.data.frame(check.names=FALSE) %>%
+	t() %>%
+	as.data.frame() %>%
+	mutate('tile' = rownames(.))
+
+colnames(dominant_color_df) <- c('hex', 'tile')
+```
+
+```{r cluster_colors}
+# convert to RGB to perform kmeans clustering
+dominant_color_df[c('red', 'green', 'blue')] <- lapply(dominant_color_df[['hex']], col2rgb) %>%
+	as.data.frame() %>%
+	t() %>%
+	as.data.frame()
+
+clusters <-  kmeans(dominant_color_df[c('red', 'green', 'blue')], centers=cfg[['color_number']][['value']])
+# cluster assignments: clusters$cluster
+# cluster color values: cluster$centers
+
+# convert the new clustered colors to hex
+cluster_keys <- rgb(
+	clusters$centers[,'red'],
+ 	clusters$centers[,'green'],
+	clusters$centers[,'blue'],
+	maxColorValue=255)
+
+# add them to the df, add the x and y axes values
+dominant_color_df <- dominant_color_df %>%
+	mutate(new_hex = cluster_keys[ clusters$cluster],
+	color_name = clusters$cluster) %>%
+	separate(col='tile', into=c('x', 'y'), sep='x', remove=FALSE)
+
+# x and y must be integers to be displayed in correct order
+dominant_color_df[['x']] <- as.integer(dominant_color_df[['x']])
+dominant_color_df[['y']] <- as.integer(dominant_color_df[['y']])
+```
+
+## Overview of tiled picture
+
+Below is the result of tiling and color-clustering, to have at most
+`r cfg[['color_number']][['value']]` colors.
+
+```{r display_result, results='asis'}
+# after clustering
+print_tiles(dominant_color_df)
+```
+
+## Fabric requirements
+
+print out the swatch of colors with number of squares / tiles needed,
+and translated into yardage
+
+```{r fatquarter}
+# how many tiles in a fat quarter?
+# with a 1/4 inch seam allowance
+fq_width <- 22
+fq_height <- 18
+raw_tile <- cfg[['tile_size']][['value']] + 0.25
+
+tile_in_fq <- floor(fq_width / raw_tile) * floor(fq_height / raw_tile)
+```
+
+```{r display_swatch, results='asis'}
+# count how many tiles are needed from each color
+totals <- dominant_color_df %>%
+	group_by(color_name) %>%
+	summarize(number_of_tiles = n(),
+		  new_hex = first(new_hex)) %>%
+	mutate(number_of_fat_quarters = number_of_tiles / tile_in_fq,
+	       y = color_name,
+	       x = 1)
+
+# unique clustered colors
+print_tiles(totals, label=TRUE)
+
+knitr::kable(totals %>% select(-new_hex, -x, -y), row.names=FALSE)
+```
+
+## General assembly remarks
+
+
+For easier assembly, first sew together 8 tiles x 8 tiles blocks, then sew rows of blocks, and
+finally sew rows together.
+
+
+## Blocks assembly
+
+Below are instructions for making each of the 8x8 blocks.
+
+```{r blocks, results='asis'}
+# TO DO: iterate over the blocks
+
+# subset the full tiled image to 1st block
+# 1st block is x = 1:8 AND y = 1:8
+i <- 1
+
+cat(paste0('\n\n### Block ', i, '\n\n'))
+
+block_i <- dominant_color_df %>%
+	filter(x %in% 1:8, y %in% 1:8)
+
+print_tiles(block_i, label=TRUE)
+
+totals <- block_i %>%
+	group_by(color_name) %>%
+	summarize(number_of_tiles = n(),
+		  new_hex = first(new_hex)) %>%
+	mutate(number_of_fat_quarters = number_of_tiles / tile_in_fq,
+	       y = color_name,
+	       x = 1)
+knitr::kable(totals %>% select(-new_hex, -x, -y), row.names=FALSE)
+```
+
+## TO DO
+
+- show tiled version with the sub-blocks separations
+- make totals a function + print the table
+- iterate over all the sub-blocks
+- prettier axes on geom_tile
+
