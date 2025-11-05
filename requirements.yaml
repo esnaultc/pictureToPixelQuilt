@@ -1,8 +1,0 @@
-channels:
-  - default
-  - conda-forge
-dependencies:
-  - r-magick
-  - r-tidyr
-  - r-ggplot2
-  - r-rmarkdown
