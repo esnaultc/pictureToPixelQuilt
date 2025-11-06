@@ -6,6 +6,7 @@ output:
     toc_float: true
 ---
 
+
 ```{r global_options, include = FALSE}
 knitr::opts_chunk$set(
 	echo=FALSE,
@@ -47,6 +48,14 @@ add_params <- function(cfg_i, img_i) {
 	cfg_i[['tile_number_height']] <- list(
 		'value' = ceiling(cfg_i[['img_height']][['value']] / cfg_i[['tile_width']][['value']]),
 		'description' = 'number of tiles across the height of the picture')
+
+	# predict the finished size of the quilt
+	cfg_i[['finished_size']] <- list(
+		'value' = paste0(
+			cfg_i[['tile_size']][['value']] * cfg_i[['tile_number_width']][['value']],
+			' x ',
+			cfg_i[['tile_size']][['value']] * cfg_i[['tile_number_height']][['value']]),
+		'description' = 'finished quilt size, in inch')
 	return(cfg_i)
 }
 
@@ -80,22 +89,38 @@ dominant_color <- function(df) {
 		.[['col']]
 }
 
-print_tiles <- function(df, label=FALSE) {
+# plot in ggplot2 the tiles from a dataframe with the columns x, y, color_name (= cluster)
+# and hex value
+# return the ggplot
+plot_tiles <- function(df, label=FALSE) {
 	# custom colors need a named list
 	hex_cols <- unique(df$new_hex)
 	names(hex_cols) <- hex_cols
 	# make a ggplot geom_tile of x by y, with fill = hex
-	p <- ggplot(df, aes(x=x, y=rev(y), label=color_name, fill=new_hex)) +
+	p <- ggplot(df, aes(x=x, y=-1*y, label=color_name, fill=new_hex)) +
 		geom_tile(color = "black", linewidth = 0.2) +
 		scale_fill_manual(values=hex_cols) +
 		coord_equal() +
 		theme_classic() +
-		theme(legend.position="none")
+		theme(legend.position="none",
+		      axis.title.x = element_blank(),
+		      axis.title.y = element_blank())
 	if (label == TRUE) {
 		p <- p + 
 			geom_text(aes(label=color_name))
 	}
- 	print(p)
+ 	return(p)
+}
+
+# returns per color the number of tiles and the yardage in fat quarter
+get_totals <- function(df) {
+	df %>%
+		group_by(color_name) %>%
+		summarize(number_of_tiles = n(),
+			new_hex = first(new_hex)) %>%
+		mutate(number_of_fat_quarters = number_of_tiles / tile_in_fq,
+	      		y = color_name,
+	       		x = 1)
 }
 ```
 
@@ -133,14 +158,21 @@ Without that simplification, the dominant color shades might overwhelm the other
 the final colorscheme.
 
 Different pictures might behave differently with different colorspace reduction, try another
-colospace in the ``config.yaml`` file if the colors are off after reduction. 
+``colospace`` in the ``config.yaml`` file if the colors look off after reduction. The maximum
+number of color after reduction (``colorspace_max_colors`` in the file ``config.yaml``) can also
+be adjusted.
 
 ```{r decrease_colors, results='asis', fig.width=3}
 # the goal of this intermediate step is to decrease the number of colors to a more
 # manageable number. 
+
+# set the seed for reproducibility
+set.seed(42)
+
+# reduce the colors
 reduced_img <- image_quantize(
 	img,
-	max = 256,
+	max = cfg[['colorspace_max_colors']][['value']],
 	colorspace = cfg[['colorspace']][['value']],
 	dither = TRUE,
 	treedepth=8)
@@ -187,9 +219,11 @@ dominant_color_df[c('red', 'green', 'blue')] <- lapply(dominant_color_df[['hex']
 	t() %>%
 	as.data.frame()
 
-clusters <-  kmeans(dominant_color_df[c('red', 'green', 'blue')], centers=cfg[['color_number']][['value']])
-# cluster assignments: clusters$cluster
-# cluster color values: cluster$centers
+# set the seed so the results are the same every time it is run
+set.seed(42)
+clusters <-  kmeans(
+	dominant_color_df[c('red', 'green', 'blue')],
+	 centers=cfg[['color_number']][['value']])
 
 # convert the new clustered colors to hex
 cluster_keys <- rgb(
@@ -214,15 +248,28 @@ dominant_color_df[['y']] <- as.integer(dominant_color_df[['y']])
 Below is the result of tiling and color-clustering, to have at most
 `r cfg[['color_number']][['value']]` colors.
 
+For easier quilt assembly, the full picture is divided in 8x8 tiles blocks.
+
 ```{r display_result, results='asis'}
+# first, figure out the breaks every 8 rows or columns. Using geom_tile so the
+# breaks should be at 0.5, 8.5, 16.5, ...
+grid_x_breaks <- seq(0.5, cfg[['tile_number_width']][['value']], by = 8)
+grid_y_breaks <- seq(0.5, cfg[['tile_number_height']][['value']], by = 8)
+
 # after clustering
-print_tiles(dominant_color_df)
+plot_tiles(dominant_color_df) +
+	geom_vline(xintercept = grid_x_breaks, color = "black", linewidth = 1) +
+	geom_hline(yintercept = grid_y_breaks * -1, color = "black", linewidth = 1)
 ```
 
 ## Fabric requirements
 
-print out the swatch of colors with number of squares / tiles needed,
-and translated into yardage
+Below is the swatch of colors with number of squares / tiles needed,
+and translated into yardage. Fat quarters are 18x22". The yardage includes a 1/4"
+seam allowance.
+
+Cut the specified number of `r (cfg[['tile_size']][['value']] + 0.5)`" squares per color.
+
 
 ```{r fatquarter}
 # how many tiles in a fat quarter?
@@ -234,27 +281,46 @@ raw_tile <- cfg[['tile_size']][['value']] + 0.25
 tile_in_fq <- floor(fq_width / raw_tile) * floor(fq_height / raw_tile)
 ```
 
+<div class = "row">
+<div class = "column" style="float: left; width: 70%;">
+
 ```{r display_swatch, results='asis'}
 # count how many tiles are needed from each color
-totals <- dominant_color_df %>%
-	group_by(color_name) %>%
-	summarize(number_of_tiles = n(),
-		  new_hex = first(new_hex)) %>%
-	mutate(number_of_fat_quarters = number_of_tiles / tile_in_fq,
-	       y = color_name,
-	       x = 1)
+totals <- get_totals(dominant_color_df)
 
-# unique clustered colors
-print_tiles(totals, label=TRUE)
+plot_tiles(totals, label=TRUE) + 
+	theme(theme(aspect.ratio=3/cfg[['color_number']][['value']]))
+```
 
+</div>
+
+<div class = "column" style="float: left; width: 30%;">
+
+```{r swatch_table, results='asis'}
 knitr::kable(totals %>% select(-new_hex, -x, -y), row.names=FALSE)
 ```
 
-## General assembly remarks
+</div>
+</div>
 
+
+## General assembly remarks
 
 For easier assembly, first sew together 8 tiles x 8 tiles blocks, then sew rows of blocks, and
 finally sew rows together.
+
+```{r assembly, results='asis'}
+# create df of blocks with their number
+block_df <- data.frame(list(
+	x = rep(seq(1:length(grid_x_breaks)), length(grid_y_breaks)),
+	y = rep(1:length(grid_y_breaks), each = length(grid_x_breaks)),
+	color_name = paste0('block ', 1:(length(grid_x_breaks)*length(grid_y_breaks))),
+	'new_hex' = 'white'
+	))
+
+plot_tiles(block_df)+
+	geom_text(aes(label=color_name))
+```
 
 
 ## Blocks assembly
@@ -262,33 +328,23 @@ finally sew rows together.
 Below are instructions for making each of the 8x8 blocks.
 
 ```{r blocks, results='asis'}
-# TO DO: iterate over the blocks
+# iterate over the blocks
+i <- 0
 
-# subset the full tiled image to 1st block
-# 1st block is x = 1:8 AND y = 1:8
-i <- 1
+for (block_col_i in grid_y_breaks+0.5) {
+	for (block_row_i in grid_x_breaks+0.5) {
+		i <- i + 1
+		cat(paste0('\n\n### Block ', i, '\n\n'))
+		block_i <- dominant_color_df %>%
+			filter(x %in% block_row_i:(block_row_i+7), y %in% block_col_i:(block_col_i+7))
 
-cat(paste0('\n\n### Block ', i, '\n\n'))
+		print(plot_tiles(block_i, label=TRUE))
 
-block_i <- dominant_color_df %>%
-	filter(x %in% 1:8, y %in% 1:8)
+		totals <- get_totals(block_i)
 
-print_tiles(block_i, label=TRUE)
-
-totals <- block_i %>%
-	group_by(color_name) %>%
-	summarize(number_of_tiles = n(),
-		  new_hex = first(new_hex)) %>%
-	mutate(number_of_fat_quarters = number_of_tiles / tile_in_fq,
-	       y = color_name,
-	       x = 1)
-knitr::kable(totals %>% select(-new_hex, -x, -y), row.names=FALSE)
+		print(knitr::kable(totals %>% select(-new_hex, -x, -y), row.names=FALSE))
+	}
+}
 ```
 
-## TO DO
-
-- show tiled version with the sub-blocks separations
-- make totals a function + print the table
-- iterate over all the sub-blocks
-- prettier axes on geom_tile
 
