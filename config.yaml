@@ -17,3 +17,7 @@ tile_size:
 colorspace:
   value: YUV
   description: '[advanced] colorspace to use in reducing the number of colors in the original picture (some examples are YUV, RGB, HSV)'
+
+colorspace_max_colors:
+  value: 500
+  description: '[advanced] maximum number of colors returned after colorspace reduction'
