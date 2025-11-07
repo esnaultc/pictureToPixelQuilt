@@ -3,7 +3,7 @@ img_filename:
   description: picture file to process (.jpg)
 
 tile_number_width:
-  value: 40
+  value: 50
   description: number of tiles to have across the width of the picture
 
 color_number:
@@ -21,3 +21,7 @@ colorspace:
 colorspace_max_colors:
   value: 500
   description: '[advanced] maximum number of colors returned after colorspace reduction'
+
+grid_block_size:
+  value: 8
+  description: block size in tiles (i.e. 8 for instructions for blocks of 8x8 tiles)
