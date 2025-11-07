@@ -35,7 +35,7 @@ following parameters are currently included:
   
   # number of tiles across the width of the picture. The number of tiles across the height
   # will be deducted from the picture size
-  tile_number_width: 40
+  tile_number_width: 50
   
   # number of different colors / fabrics
   color_number: 16
@@ -51,6 +51,9 @@ following parameters are currently included:
 
   # maximum number of colors returned after colorspace reduction
   colorspace_max_colors: 500
+
+  # block size in tiles (i.e. 8 for instructions for blocks of 8x8 tiles)
+  grid_block_size: 8
 ```
 
 ## Command line to run the script

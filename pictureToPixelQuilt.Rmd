@@ -40,13 +40,13 @@ add_params <- function(cfg_i, img_i) {
 
 	# tile width is the image width divided by requested number of tiles along x-axis
 	cfg_i[['tile_width']] <- list(
-		'value' = ceiling(cfg_i[['img_width']][['value']] /
+		'value' = floor(cfg_i[['img_width']][['value']] /
 			 cfg_i[['tile_number_width']][['value']]),
 		'description' = 'tile width in pixel')
 
 	# now can deduct the number of tiles along y-axis
 	cfg_i[['tile_number_height']] <- list(
-		'value' = ceiling(cfg_i[['img_height']][['value']] / cfg_i[['tile_width']][['value']]),
+		'value' = floor(cfg_i[['img_height']][['value']] / cfg_i[['tile_width']][['value']]),
 		'description' = 'number of tiles across the height of the picture')
 
 	# predict the finished size of the quilt
@@ -248,13 +248,16 @@ dominant_color_df[['y']] <- as.integer(dominant_color_df[['y']])
 Below is the result of tiling and color-clustering, to have at most
 `r cfg[['color_number']][['value']]` colors.
 
-For easier quilt assembly, the full picture is divided in 8x8 tiles blocks.
+For easier quilt assembly, the full picture is divided in
+`r cfg[['grid_block_size']][['value']]`x`r cfg[['grid_block_size']][['value']]` tiles blocks.
 
 ```{r display_result, results='asis'}
 # first, figure out the breaks every 8 rows or columns. Using geom_tile so the
 # breaks should be at 0.5, 8.5, 16.5, ...
-grid_x_breaks <- seq(0.5, cfg[['tile_number_width']][['value']], by = 8)
-grid_y_breaks <- seq(0.5, cfg[['tile_number_height']][['value']], by = 8)
+grid_x_breaks <- seq(0.5, cfg[['tile_number_width']][['value']],
+	 by = cfg[['grid_block_size']][['value']])
+grid_y_breaks <- seq(0.5, cfg[['tile_number_height']][['value']],
+	 by = cfg[['grid_block_size']][['value']])
 
 # after clustering
 plot_tiles(dominant_color_df) +
@@ -306,7 +309,8 @@ knitr::kable(totals %>% select(-new_hex, -x, -y), row.names=FALSE)
 
 ## General assembly remarks
 
-For easier assembly, first sew together 8 tiles x 8 tiles blocks, then sew rows of blocks, and
+For easier assembly, first sew together `r cfg[['grid_block_size']][['value']]` tiles x 
+`r cfg[['grid_block_size']][['value']]` tiles blocks, then sew rows of blocks, and
 finally sew rows together.
 
 ```{r assembly, results='asis'}
@@ -325,7 +329,8 @@ plot_tiles(block_df)+
 
 ## Blocks assembly
 
-Below are instructions for making each of the 8x8 blocks.
+Below are instructions for making each of the
+`r cfg[['grid_block_size']][['value']]`x`r cfg[['grid_block_size']][['value']]` blocks.
 
 ```{r blocks, results='asis'}
 # iterate over the blocks
