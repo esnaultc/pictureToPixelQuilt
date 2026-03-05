@@ -2,6 +2,9 @@
 
 See the rendered html at [https://esnaultc.github.io/pictureToPixelQuilt/](https://esnaultc.github.io/pictureToPixelQuilt/)
 
+Another example: [https://esnaultc.github.io/pictureToPixelQuilt/bluemountain.html](https://esnaultc.github.io/pictureToPixelQuilt/bluemountain.html)
+with the corresponding [finished quilt](https://esnaultc.github.io/pictureToPixelQuilt/bluemountain.jpg).
+
 Trying to merge two of my favorite hobbies, this project is intended to convert a picture file (.jpg)
 to a grid of square tiles of a finite number of colors that can be used as a quilt pattern.
 
